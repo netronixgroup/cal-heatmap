@@ -271,7 +271,11 @@ var CalHeatMap = function() {
 		//
 		// This callback is also executed once, after calling next(),
 		// only when the min domain is reached
-		onMinDomainReached: null
+		onMinDomainReached: null,
+
+		// Callback when hovering over a time block
+		onTooltip: function(title) { return title; }
+
 	};
 
 	this._domainType = {
@@ -868,8 +872,10 @@ var CalHeatMap = function() {
 					selection.on("mouseover", function(d) {
 						var domainNode = this.parentNode.parentNode;
 
+						var showTooltip = function (title) {
+
 						self.tooltip
-						.html(self.getSubDomainTitle(d))
+							.html(title)
 						.attr("style", "display: block;")
 						;
 
@@ -893,6 +899,14 @@ var CalHeatMap = function() {
 						"left: " + tooltipPositionX + "px; " +
 						"top: " + tooltipPositionY + "px;")
 						;
+						};
+
+						if(!!options.onTooltip) {
+							showTooltip(self.options.onTooltip(new Date(d.t), d.v));
+						} else {
+							showTooltip(self.getSubDomainTitle(d));
+						}
+
 					});
 
 					selection.on("mouseout", function() {
@@ -1129,7 +1143,7 @@ CalHeatMap.prototype = {
 		}
 
 		// Don't touch these settings
-		var s = ["data", "onComplete", "onClick", "afterLoad", "afterLoadData", "afterLoadPreviousDomain", "afterLoadNextDomain"];
+		var s = ["data", "onComplete", "onClick", "afterLoad", "afterLoadData", "afterLoadPreviousDomain", "afterLoadNextDomain", "onTooltip"];
 
 		for (var k in s) {
 			if (settings.hasOwnProperty(s[k])) {
