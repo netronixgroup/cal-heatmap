@@ -1151,7 +1151,11 @@ CalHeatMap.prototype = {
 		}
 
 		// Don't touch these settings
-		var s = ["data", "onComplete", "onClick", "afterLoad", "afterLoadData", "afterLoadPreviousDomain", "afterLoadNextDomain", "onTooltip", "afterUpdate"];
+<<<<<<< HEAD
+		var s = ["data", "onComplete", "onClick", "afterLoad", "afterLoadData", "afterLoadPreviousDomain", "afterLoadNextDomain", "onTooltip"];
+=======
+		var s = ["data", "onComplete", "onClick", "afterLoad", "afterLoadData", "afterLoadPreviousDomain", "afterLoadNextDomain", "afterUpdate"];
+>>>>>>> upstream/master
 
 		for (var k in s) {
 			if (settings.hasOwnProperty(s[k])) {
