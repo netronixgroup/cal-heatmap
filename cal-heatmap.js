@@ -1,4 +1,4 @@
-/*! cal-heatmap v3.6.2 (Mon Oct 10 2016 01:36:20)
+/*! cal-heatmap v3.6.2 (Thu Aug 29 2019 14:51:09)
  *  ---------------------------------------------
  *  Cal-Heatmap is a javascript module to create calendar heatmap to visualize time series data
  *  https://github.com/wa0x6e/cal-heatmap
@@ -86,6 +86,11 @@ var CalHeatMap = function() {
 		// Leave to null (default) for GET request
 		// Expect a string, formatted like "a=b;c=d"
 		dataPostPayload: null,
+
+		// Additional headers sent when requesting data
+		// Expect an object formatted like:
+		// { 'X-CSRF-TOKEN': 'token' }
+		dataRequestHeaders: null,
 
 		// Whether to consider missing date:value from the datasource
 		// as equal to 0, or just leave them as missing
@@ -264,6 +269,9 @@ var CalHeatMap = function() {
 		// Takes the fetched "data" object as argument, must return a json object
 		// formatted like {timestamp:count, timestamp2:count2},
 		afterLoadData: function(data) { return data; },
+
+		// Callback triggered after calling and completing update().
+		afterUpdate: null,
 
 		// Callback triggered after calling next().
 		// The `status` argument is equal to true if there is no
@@ -910,7 +918,7 @@ var CalHeatMap = function() {
 						};
 
 						if(!!options.onTooltip) {
-							showTooltip(self.options.onTooltip(new Date(d.t), d.v, self));
+							showTooltip(self.options.onTooltip(new Date(d.t), d.v));
 						} else {
 							showTooltip(self.getSubDomainTitle(d));
 						}
@@ -1128,7 +1136,7 @@ CalHeatMap.prototype = {
 		}
 
 		if (d3.select(options.itemSelector)[0][0] === null) {
-			throw new Error("The node '" + options.itemSelector + "' specified in itemSelector does not exists");
+			throw new Error("The node '" + options.itemSelector + "' specified in itemSelector does not exist");
 		}
 
 		try {
@@ -1151,7 +1159,7 @@ CalHeatMap.prototype = {
 		}
 
 		// Don't touch these settings
-		var s = ["data", "onComplete", "onClick", "afterLoad", "afterLoadData", "afterLoadPreviousDomain", "afterLoadNextDomain", "onTooltip"];
+		var s = ["data", "onComplete", "onClick", "afterLoad", "afterLoadData", "afterLoadPreviousDomain", "afterLoadNextDomain", "onTooltip", "afterUpdate"];
 
 		for (var k in s) {
 			if (settings.hasOwnProperty(s[k])) {
@@ -1487,6 +1495,26 @@ CalHeatMap.prototype = {
 		;
 	},
 
+	/**
+	 * Sprintf like function.
+	 * Replaces placeholders {0} in string with values from provided object.
+	 *
+	 * @param string formatted String containing placeholders.
+	 * @param object args Object with properties to replace placeholders in string.
+	 *
+	 * @return String
+	 */
+	formatStringWithObject: function (formatted, args) {
+		"use strict";
+		for (var prop in args) {
+			if (args.hasOwnProperty(prop)) {
+				var regexp = new RegExp("\\{" + prop + "\\}", "gi");
+				formatted = formatted.replace(regexp, args[prop]);
+			}
+		}
+		return formatted;
+	},
+
 	// =========================================================================//
 	// EVENTS CALLBACK															//
 	// =========================================================================//
@@ -1633,6 +1661,12 @@ CalHeatMap.prototype = {
 		}
 	},
 
+	afterUpdate: function() {
+		"use strict";
+
+		return this.triggerEvent("afterUpdate");
+	},
+
 	// =========================================================================//
 	// FORMATTER																//
 	// =========================================================================//
@@ -1658,7 +1692,7 @@ CalHeatMap.prototype = {
 		"use strict";
 
 		if (d.v === null && !this.options.considerMissingDataAsZero) {
-			return (this.options.subDomainTitleFormat.empty).format({
+			return this.formatStringWithObject(this.options.subDomainTitleFormat.empty , {
 				date: this.formatDate(new Date(d.t), this.options.subDomainDateFormat)
 			});
 		} else {
@@ -1668,7 +1702,7 @@ CalHeatMap.prototype = {
 				value = 0;
 			}
 
-			return (this.options.subDomainTitleFormat.filled).format({
+			return this.formatStringWithObject(this.options.subDomainTitleFormat.filled, {
 				count: this.formatNumber(value),
 				name: this.options.itemName[(value !== 1 ? 1: 0)],
 				connector: this._domainType[this.options.subDomain].format.connector,
@@ -2516,7 +2550,7 @@ CalHeatMap.prototype = {
 		if (arguments.length < 6) {
 			updateMode = this.APPEND_ON_UPDATE;
 		}
-		var _callback = function(data) {
+		var _callback = function(error, data) {
 			if (afterLoad !== false) {
 				if (typeof afterLoad === "function") {
 					data = afterLoad(data);
@@ -2537,7 +2571,7 @@ CalHeatMap.prototype = {
 		switch(typeof source) {
 		case "string":
 			if (source === "") {
-				_callback({});
+				_callback(null, {});
 				return true;
 			} else {
 				var url = this.parseURI(source, startDate, endDate);
@@ -2550,30 +2584,42 @@ CalHeatMap.prototype = {
 					payload = this.parseURI(self.options.dataPostPayload, startDate, endDate);
 				}
 
+				var xhr = null;
 				switch(this.options.dataType) {
 				case "json":
-					d3.json(url, _callback).send(requestType, payload);
+					xhr = d3.json(url);
 					break;
 				case "csv":
-					d3.csv(url, _callback).send(requestType, payload);
+					xhr = d3.csv(url);
 					break;
 				case "tsv":
-					d3.tsv(url, _callback).send(requestType, payload);
+					xhr = d3.tsv(url);
 					break;
 				case "txt":
-					d3.text(url, "text/plain", _callback).send(requestType, payload);
+					xhr = d3.text(url, "text/plain");
 					break;
 				}
+
+				// jshint maxdepth:5
+				if (self.options.dataRequestHeaders !== null) {
+					for (var header in self.options.dataRequestHeaders) {
+						if (self.options.dataRequestHeaders.hasOwnProperty(header)) {
+							xhr.header(header, self.options.dataRequestHeaders[header]);
+						}
+					}
+				}
+
+				xhr.send(requestType, payload, _callback);
 			}
 			return false;
 		case "object":
 			if (source === Object(source)) {
-				_callback(source);
+				_callback(null, source);
 				return false;
 			}
 			/* falls through */
 		default:
-			_callback({});
+			_callback(null, {});
 			return true;
 		}
 	},
@@ -2810,6 +2856,9 @@ CalHeatMap.prototype = {
 	update: function(dataSource, afterLoad, updateMode) {
 		"use strict";
 
+		if (arguments.length === 0) {
+			dataSource = this.options.data;
+		}
 		if (arguments.length < 2) {
 			afterLoad = true;
 		}
@@ -2825,6 +2874,7 @@ CalHeatMap.prototype = {
 			this.getSubDomain(domains[domains.length-1]).pop(),
 			function() {
 				self.fill();
+				self.afterUpdate();
 			},
 			afterLoad,
 			updateMode
@@ -3242,17 +3292,17 @@ Legend.prototype.redraw = function(width) {
 
 	legendItem.select("title").text(function(d, i) {
 		if (i === 0) {
-			return (options.legendTitleFormat.lower).format({
+			return calendar.formatStringWithObject(options.legendTitleFormat.lower, {
 				min: options.legend[i],
 				name: options.itemName[1]
 			});
 		} else if (i === _legend.length-1) {
-			return (options.legendTitleFormat.upper).format({
+			return calendar.formatStringWithObject(options.legendTitleFormat.upper, {
 				max: options.legend[i-1],
 				name: options.itemName[1]
 			});
 		} else {
-			return (options.legendTitleFormat.inner).format({
+			return calendar.formatStringWithObject(options.legendTitleFormat.inner, {
 				down: options.legend[i-1],
 				up: options.legend[i],
 				name: options.itemName[1]
@@ -3348,7 +3398,7 @@ Legend.prototype.buildColors = function() {
 
 	if (_legend[0] > 0) {
 		_legend.unshift(0);
-	} else if (_legend[0] < 0) {
+	} else if (_legend[0] <= 0) {
 		// Let's guess the leftmost value, it we have to add one
 		_legend.unshift(_legend[0] - (_legend[_legend.length-1] - _legend[0])/_legend.length);
 	}
@@ -3402,24 +3452,6 @@ Legend.prototype.getClass = function(n, withCssClass) {
 
 	index.unshift("");
 	return (index.join(" r") + (withCssClass ? index.join(" q"): "")).trim();
-};
-
-/**
- * Sprintf like function
- * @source http://stackoverflow.com/a/4795914/805649
- * @return String
- */
-String.prototype.format = function () {
-	"use strict";
-
-	var formatted = this;
-	for (var prop in arguments[0]) {
-		if (arguments[0].hasOwnProperty(prop)) {
-			var regexp = new RegExp("\\{" + prop + "\\}", "gi");
-			formatted = formatted.replace(regexp, arguments[0][prop]);
-		}
-	}
-	return formatted;
 };
 
 /**
